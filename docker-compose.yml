@@ -1,0 +1,10 @@
+version: "3.9"
+   
+services:
+  feednotifier:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      args:
+        GO_VERSION: ${GO_VERSION}
+    image: registry.gitlab.com/aerzus/server/feednotifier:${GO_VERSION}

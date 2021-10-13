@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha1"
 	"fmt"
 	"github.com/jasonlvhit/gocron"
 	"github.com/mmcdole/gofeed"
@@ -9,28 +10,27 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
-var cache map[string]*time.Time
+var cache map[string][20]byte
 
 func task(name string, url string, bot *tb.Bot, user *tb.User) {
 	parser := gofeed.NewParser()
 	feed, _ := parser.ParseURL(url)
-	newdate := feed.UpdatedParsed
-	lastdate := cache[name]
-	if lastdate != nil {
-		if newdate.After(*lastdate) {
+	newcache := sha1.Sum([]byte(feed.Items[0].Link))
+	cacheentry := cache[name]
+	if &cacheentry != nil {
+		if cacheentry != newcache {
 			bot.Send(user, fmt.Sprintf("%s - %s", name, feed.Items[0].Title))
 		}
 	} else {
 		bot.Send(user, fmt.Sprintf("%s - %s", name, feed.Items[0].Title))
 	}
-	cache[name] = feed.UpdatedParsed
+	cache[name] = newcache
 }
 
 func main() {
-	cache = map[string]*time.Time{}
+	cache = map[string][20]byte{}
 
 	telegramtoken, tt := os.LookupEnv("TELEGRAM_TOKEN")
 	telegramchannelstr, tc := os.LookupEnv("TELEGRAM_ID")
@@ -64,7 +64,7 @@ func main() {
 	for _, f := range feeds {
 		feedentry := strings.Split(f, "|")
 		task(feedentry[0], feedentry[1], bot, &user)
-		plan.Every(uint64(timeout)).Seconds().Do(task, feedentry[0], feedentry[1], &bot, &user)
+		plan.Every(uint64(timeout)).Seconds().Do(task, feedentry[0], feedentry[1], bot, &user)
 	}
 	<-plan.Start()
 }

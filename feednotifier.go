@@ -23,10 +23,10 @@ func task(name string, url string, bot *tb.Bot, user *tb.User) {
 	newcache := feed.Items[0].Link
 	cacheentry, err := db.Get(ctx, name).Result()
 	if err == redis.Nil {
-		bot.Send(user, fmt.Sprintf("%s - %s", name, feed.Items[0].Title))
+		bot.Send(user, fmt.Sprintf("%s - %s - %s", name, feed.Items[0].Title, feed.Items[0].Link))
 	} else {
 		if newcache != cacheentry {
-			bot.Send(user, fmt.Sprintf("%s - %s", name, feed.Items[0].Title))
+			bot.Send(user, fmt.Sprintf("%s - %s - %s", name, feed.Items[0].Title, feed.Items[0].Link))
 		}
 	}
 	err = db.Set(ctx, name, newcache, 0).Err()

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"crypto/sha1"
 	"fmt"
+	"github.com/go-redis/redis/v8"
 	"github.com/jasonlvhit/gocron"
 	"github.com/mmcdole/gofeed"
 	tb "gopkg.in/tucnak/telebot.v2"
@@ -10,28 +10,49 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"context"
 )
 
-var cache map[string][20]byte
+var ctx = context.Background()
+var db = createRedisClient()
+
 
 func task(name string, url string, bot *tb.Bot, user *tb.User) {
 	parser := gofeed.NewParser()
 	feed, _ := parser.ParseURL(url)
-	newcache := sha1.Sum([]byte(feed.Items[0].Link))
-	cacheentry := cache[name]
-	if &cacheentry != nil {
-		if cacheentry != newcache {
+	newcache := feed.Items[0].Link
+	cacheentry, err := db.Get(ctx, name).Result()
+	if err == redis.Nil {
+		bot.Send(user, fmt.Sprintf("%s - %s", name, feed.Items[0].Title))
+	} else {
+		if newcache != cacheentry {
 			bot.Send(user, fmt.Sprintf("%s - %s", name, feed.Items[0].Title))
 		}
-	} else {
-		bot.Send(user, fmt.Sprintf("%s - %s", name, feed.Items[0].Title))
 	}
-	cache[name] = newcache
+	err = db.Set(ctx, name, newcache, 0).Err()
+	if err != nil {
+		log.Println("Failed to store entry in redis cache.")
+	}
+}
+
+func createRedisClient() *redis.Client {
+	redisaddr, v := os.LookupEnv("REDIS_ADDR")
+	if !v {
+		redisaddr = "redis:6379"
+	}
+	redispass, v := os.LookupEnv("REDIS_PASS")
+	if !v {
+		redispass = ""
+	}
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisaddr,
+		Password: redispass, // no password set
+		DB:       0,  // use default DB
+	})
+	return rdb
 }
 
 func main() {
-	cache = map[string][20]byte{}
-
 	telegramtoken, tt := os.LookupEnv("TELEGRAM_TOKEN")
 	telegramchannelstr, tc := os.LookupEnv("TELEGRAM_ID")
 	feedsstr, f := os.LookupEnv("FEEDS")

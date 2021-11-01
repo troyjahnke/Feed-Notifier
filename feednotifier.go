@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis/v8"
 	"github.com/jasonlvhit/gocron"
@@ -9,13 +11,15 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
-	"context"
 )
 
 var ctx = context.Background()
 var db = createRedisClient()
 
+type Feed struct {
+	Name string `json:"name"`
+	Url string `json:"url"`
+}
 
 func task(name string, url string, bot *tb.Bot, user *tb.User) {
 	parser := gofeed.NewParser()
@@ -55,9 +59,18 @@ func createRedisClient() *redis.Client {
 func main() {
 	telegramtoken, tt := os.LookupEnv("TELEGRAM_TOKEN")
 	telegramchannelstr, tc := os.LookupEnv("TELEGRAM_ID")
-	feedsstr, f := os.LookupEnv("FEEDS")
 	timeoutstr, t := os.LookupEnv("TIMEOUT")
-	if !tt || !tc || !f || !t {
+	feedpath, fe := os.LookupEnv("FEED_FILE_PATH")
+	if !fe{
+		feedpath = "/feeds.json"
+	}
+	feedfile, err := os.ReadFile(feedpath)
+	if err != nil{
+		log.Fatalln("Failed to read feed json file. " + err.Error())
+	}
+	var feeds []Feed
+	json.Unmarshal(feedfile, &feeds)
+	if !tt || !tc || !t {
 		log.Fatalln("Telegram Token, Telegram Channel ID, feeds, and timeout are required")
 	}
 
@@ -80,12 +93,9 @@ func main() {
 
 	plan := gocron.NewScheduler()
 
-	feeds := strings.Split(feedsstr, ",")
-
 	for _, f := range feeds {
-		feedentry := strings.Split(f, "|")
-		task(feedentry[0], feedentry[1], bot, &user)
-		plan.Every(uint64(timeout)).Seconds().Do(task, feedentry[0], feedentry[1], bot, &user)
+		task(f.Name, f.Url, bot, &user)
+		plan.Every(uint64(timeout)).Seconds().Do(task, f.Name, f.Url, bot, &user)
 	}
 	<-plan.Start()
 }

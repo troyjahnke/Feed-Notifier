@@ -7,7 +7,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/jasonlvhit/gocron"
 	"github.com/mmcdole/gofeed"
-	tb "gopkg.in/tucnak/telebot.v2"
+	tb "gopkg.in/tucnak/telebot.v3"
 	"log"
 	"os"
 	"strconv"
@@ -18,7 +18,7 @@ var db = createRedisClient()
 
 type Feed struct {
 	Name string `json:"name"`
-	Url string `json:"url"`
+	Url  string `json:"url"`
 }
 
 func task(name string, url string, bot *tb.Bot, user *tb.User) {
@@ -51,7 +51,7 @@ func createRedisClient() *redis.Client {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     redisaddr,
 		Password: redispass, // no password set
-		DB:       0,  // use default DB
+		DB:       0,         // use default DB
 	})
 	return rdb
 }
@@ -61,11 +61,11 @@ func main() {
 	telegramchannelstr, tc := os.LookupEnv("TELEGRAM_ID")
 	timeoutstr, t := os.LookupEnv("TIMEOUT")
 	feedpath, fe := os.LookupEnv("FEED_FILE_PATH")
-	if !fe{
+	if !fe {
 		feedpath = "/feeds.json"
 	}
 	feedfile, err := os.ReadFile(feedpath)
-	if err != nil{
+	if err != nil {
 		log.Fatalln("Failed to read feed json file. " + err.Error())
 	}
 	var feeds []Feed
@@ -74,7 +74,7 @@ func main() {
 		log.Fatalln("Telegram Token, Telegram Channel ID, feeds, and timeout are required")
 	}
 
-	telegramchannel, err := strconv.Atoi(telegramchannelstr)
+	telegramchannel, err := strconv.ParseInt(telegramchannelstr, 10, 64)
 	if err != nil {
 		log.Fatalln("Unable to convert telegram channel to integer.")
 	}

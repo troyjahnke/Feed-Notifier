@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/containrrr/shoutrrr"
 	"github.com/go-redis/redis/v8"
 	"github.com/jasonlvhit/gocron"
 	"github.com/mmcdole/gofeed"
-	tb "gopkg.in/tucnak/telebot.v3"
 	"log"
 	"os"
 	"strconv"
@@ -21,17 +21,14 @@ type Feed struct {
 	Url  string `json:"url"`
 }
 
-func task(name string, url string, bot *tb.Bot, user *tb.User) {
+func task(name string, url string, notificationurl string) {
 	parser := gofeed.NewParser()
 	feed, _ := parser.ParseURL(url)
 	newcache := feed.Items[0].Link
 	cacheentry, err := db.Get(ctx, name).Result()
-	if err == redis.Nil {
-		bot.Send(user, fmt.Sprintf("%s - %s - %s", name, feed.Items[0].Title, feed.Items[0].Link))
-	} else {
-		if newcache != cacheentry {
-			bot.Send(user, fmt.Sprintf("%s - %s - %s", name, feed.Items[0].Title, feed.Items[0].Link))
-		}
+
+	if err == redis.Nil || newcache != cacheentry {
+		shoutrrr.Send(notificationurl, fmt.Sprintf("%s - %s - %s", name, feed.Items[0].Title, feed.Items[0].Link))
 	}
 	err = db.Set(ctx, name, newcache, 0).Err()
 	if err != nil {
@@ -57,10 +54,16 @@ func createRedisClient() *redis.Client {
 }
 
 func main() {
-	telegramtoken, tt := os.LookupEnv("TELEGRAM_TOKEN")
-	telegramchannelstr, tc := os.LookupEnv("TELEGRAM_ID")
+	notificationurl, n := os.LookupEnv("NOTIFICATION_URL")
 	timeoutstr, t := os.LookupEnv("TIMEOUT")
 	feedpath, fe := os.LookupEnv("FEED_FILE_PATH")
+	if !n || !t {
+		log.Fatalln("Timeout and/or notification url is missing.")
+	}
+	err := shoutrrr.Send(notificationurl, "Feed Notifier Started...")
+	if err != nil {
+		log.Fatalln("Failed to send test message: " + err.Error())
+	}
 	if !fe {
 		feedpath = "/feeds.json"
 	}
@@ -68,34 +71,18 @@ func main() {
 	if err != nil {
 		log.Fatalln("Failed to read feed json file. " + err.Error())
 	}
-	var feeds []Feed
-	json.Unmarshal(feedfile, &feeds)
-	if !tt || !tc || !t {
-		log.Fatalln("Telegram Token, Telegram Channel ID, feeds, and timeout are required")
-	}
-
-	telegramchannel, err := strconv.ParseInt(telegramchannelstr, 10, 64)
-	if err != nil {
-		log.Fatalln("Unable to convert telegram channel to integer.")
-	}
-
 	timeout, err := strconv.Atoi(timeoutstr)
 	if err != nil {
 		log.Fatalln("Unable to convert timeout to integer.")
 	}
 
-	bot, err := tb.NewBot(tb.Settings{Token: telegramtoken})
-	if err != nil {
-		log.Fatalln("Unable to create telegram bot.")
-	}
-
-	user := tb.User{ID: telegramchannel}
-
+	var feeds []Feed
+	json.Unmarshal(feedfile, &feeds)
 	plan := gocron.NewScheduler()
 
 	for _, f := range feeds {
-		task(f.Name, f.Url, bot, &user)
-		plan.Every(uint64(timeout)).Seconds().Do(task, f.Name, f.Url, bot, &user)
+		task(f.Name, f.Url, notificationurl)
+		plan.Every(uint64(timeout)).Seconds().Do(task, f.Name, f.Url, notificationurl)
 	}
 	<-plan.Start()
 }

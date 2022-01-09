@@ -7,8 +7,6 @@ require (
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/jasonlvhit/gocron v0.0.1
 	github.com/mmcdole/gofeed v1.1.3
-	gopkg.in/tucnak/telebot.v2 v2.4.0
-	gopkg.in/tucnak/telebot.v3 v3.0.0-20211217125808-d053f01c3002
 )
 
 require (
@@ -27,7 +25,6 @@ require (
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/onsi/ginkgo v1.16.4 // indirect
 	github.com/onsi/gomega v1.16.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	golang.org/x/net v0.0.0-20220107192237-5cfca573fb4d // indirect
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect

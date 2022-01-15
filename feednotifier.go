@@ -22,6 +22,7 @@ type Feed struct {
 }
 
 func task(name string, url string, notificationurl string) {
+	log.Println(fmt.Sprintf("Looking for updates for %s - %s", name, url))
 	parser := gofeed.NewParser()
 	feed, _ := parser.ParseURL(url)
 	newcache := feed.Items[0].Link

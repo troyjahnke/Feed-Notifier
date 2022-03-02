@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 )
 
 var ctx = context.Background()
@@ -55,16 +56,23 @@ func createRedisClient() *redis.Client {
 }
 
 func main() {
-	notificationurl, n := os.LookupEnv("NOTIFICATION_URL")
 	timeoutstr, t := os.LookupEnv("TIMEOUT")
-	feedpath, fe := os.LookupEnv("FEED_FILE_PATH")
-	if !n || !t {
+	if !t {
+		timeoutstr = "10800"
+	}
+	delaystr, t := os.LookupEnv("DELAY")
+	if !t {
+		delaystr = "5"
+	}
+	notificationurl, n := os.LookupEnv("NOTIFICATION_URL")
+	if !n {
 		log.Fatalln("Timeout and/or notification url is missing.")
 	}
 	err := shoutrrr.Send(notificationurl, "Feed Notifier Started...")
 	if err != nil {
 		log.Fatalln("Failed to send test message: " + err.Error())
 	}
+	feedpath, fe := os.LookupEnv("FEED_FILE_PATH")
 	if !fe {
 		feedpath = "/feeds.json"
 	}
@@ -72,8 +80,9 @@ func main() {
 	if err != nil {
 		log.Fatalln("Failed to read feed json file. " + err.Error())
 	}
-	timeout, err := strconv.Atoi(timeoutstr)
-	if err != nil {
+	timeout, timeouterr := strconv.ParseUint(timeoutstr, 10, 64)
+	delay, delayerr := strconv.ParseInt(delaystr, 10, 64)
+	if timeouterr != nil || delayerr != nil {
 		log.Fatalln("Unable to convert timeout to integer.")
 	}
 
@@ -83,7 +92,8 @@ func main() {
 
 	for _, f := range feeds {
 		task(f.Name, f.Url, notificationurl)
-		plan.Every(uint64(timeout)).Seconds().Do(task, f.Name, f.Url, notificationurl)
+		time.Sleep(time.Duration(delay) * time.Second)
+		plan.Every(timeout).Seconds().Do(task, f.Name, f.Url, notificationurl)
 	}
 	<-plan.Start()
 }

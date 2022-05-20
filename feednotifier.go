@@ -2,24 +2,29 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/containrrr/shoutrrr"
 	"github.com/go-redis/redis/v8"
 	"github.com/jasonlvhit/gocron"
+	"github.com/knadh/koanf"
+	"github.com/knadh/koanf/parsers/json"
+	"github.com/knadh/koanf/providers/confmap"
+	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
 	"github.com/mmcdole/gofeed"
 	"log"
 	"os"
-	"strconv"
+	"strings"
 	"time"
 )
 
 var ctx = context.Background()
 var db = createRedisClient()
+var conf = koanf.New(".")
 
 type Feed struct {
-	Name string `json:"name"`
-	Url  string `json:"url"`
+	Name string
+	Url  string
 }
 
 func task(name string, url string, notificationurl string) {
@@ -56,44 +61,46 @@ func createRedisClient() *redis.Client {
 }
 
 func main() {
-	timeoutstr, t := os.LookupEnv("TIMEOUT")
-	if !t {
-		timeoutstr = "10800"
-	}
-	delaystr, t := os.LookupEnv("DELAY")
-	if !t {
-		delaystr = "5"
-	}
-	notificationurl, n := os.LookupEnv("NOTIFICATION_URL")
-	if !n {
-		log.Fatalln("Timeout and/or notification url is missing.")
-	}
-	err := shoutrrr.Send(notificationurl, "Feed Notifier Started...")
+	log.SetOutput(os.Stdout)
+	log.Println("Starting Feed notifier...")
+	conf.Load(confmap.Provider(map[string]interface{}{
+		"timeout": 10800,
+		"delay":   5,
+	}, "."), nil)
+	conf.Load(file.Provider("/config.json"), json.Parser())
+	conf.Load(file.Provider("./config.json"), json.Parser())
+	conf.Load(env.Provider("", ".", func(s string) string {
+		return strings.ToLower(s)
+	}), nil)
+
+	// Setup notifier
+	notification_url := conf.MustString("notification_url")
+	err := shoutrrr.Send(notification_url, "Feed Notifier Started...")
 	if err != nil {
 		log.Fatalln("Failed to send test message: " + err.Error())
 	}
-	feedpath, fe := os.LookupEnv("FEED_FILE_PATH")
-	if !fe {
-		feedpath = "/feeds.json"
-	}
-	feedfile, err := os.ReadFile(feedpath)
-	if err != nil {
-		log.Fatalln("Failed to read feed json file. " + err.Error())
-	}
-	timeout, timeouterr := strconv.ParseUint(timeoutstr, 10, 64)
-	delay, delayerr := strconv.ParseInt(delaystr, 10, 64)
-	if timeouterr != nil || delayerr != nil {
-		log.Fatalln("Unable to convert timeout to integer.")
+
+	// Setup feeds and feed scheduler
+	var feeds []Feed
+	conf.Unmarshal("feeds", &feeds)
+
+	feedlength := len(feeds)
+	if feedlength == 0 {
+		log.Fatalln("No feeds defined. Exiting now.")
+	} else {
+		log.Printf("Detected %d feeds", feedlength)
 	}
 
-	var feeds []Feed
-	json.Unmarshal(feedfile, &feeds)
+	// Setup scheduler.
+	timeout := uint64(conf.MustInt64("timeout"))
+	delay := uint64(conf.MustInt64("delay"))
 	plan := gocron.NewScheduler()
 
+	// Run notifier.
 	for _, f := range feeds {
-		task(f.Name, f.Url, notificationurl)
+		task(f.Name, f.Url, notification_url)
 		time.Sleep(time.Duration(delay) * time.Second)
-		plan.Every(timeout).Seconds().Do(task, f.Name, f.Url, notificationurl)
+		plan.Every(timeout).Seconds().Do(task, f.Name, f.Url, notification_url)
 	}
 	<-plan.Start()
 }

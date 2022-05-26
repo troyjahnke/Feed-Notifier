@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/containrrr/shoutrrr"
+	"github.com/go-co-op/gocron"
 	"github.com/go-redis/redis/v8"
-	"github.com/jasonlvhit/gocron"
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/providers/confmap"
@@ -92,15 +92,18 @@ func main() {
 	}
 
 	// Setup scheduler.
-	timeout := uint64(conf.MustInt64("timeout"))
-	delay := uint64(conf.MustInt64("delay"))
-	plan := gocron.NewScheduler()
+	timeout := int(conf.MustInt64("timeout"))
+	delay := int(conf.MustInt64("delay"))
+	plan := gocron.NewScheduler(time.UTC)
 
 	// Run notifier.
 	for _, f := range feeds {
 		task(f.Name, f.Url, notification_url)
 		time.Sleep(time.Duration(delay) * time.Second)
-		plan.Every(timeout).Seconds().Do(task, f.Name, f.Url, notification_url)
+		_, err := plan.Every(timeout).Seconds().Do(task, f.Name, f.Url, notification_url)
+		if err != nil {
+			log.Fatalf("Failed to create task for %s\nError: %s", f.Name, err.Error())
+		}
 	}
-	<-plan.Start()
+	plan.StartBlocking()
 }

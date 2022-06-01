@@ -1,4 +1,4 @@
-ARG GO_VERSION
+ARG GO_VERSION=1.18.3
 FROM golang:${GO_VERSION}-alpine as builder
 WORKDIR /app
 ADD feednotifier.go go.mod go.sum ./

@@ -1,25 +1,22 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/containrrr/shoutrrr"
 	"github.com/go-co-op/gocron"
-	"github.com/go-redis/redis/v8"
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/mmcdole/gofeed"
+	"github.com/ostafen/clover"
 	"log"
 	"os"
 	"strings"
 	"time"
 )
 
-var ctx = context.Background()
-var db = createRedisClient()
 var conf = koanf.New(".")
 
 type Feed struct {
@@ -27,45 +24,42 @@ type Feed struct {
 	Url  string
 }
 
-func task(name string, url string, notificationurl string) {
+func task(name string, url string, notificationUrl string, db *clover.DB) {
 	log.Println(fmt.Sprintf("Looking for updates for %s - %s", name, url))
 	parser := gofeed.NewParser()
 	feed, _ := parser.ParseURL(url)
-	newcache := feed.Items[0].Link
-	cacheentry, err := db.Get(ctx, name).Result()
+	latestLink := feed.Items[0].Link
 
-	if err == redis.Nil || newcache != cacheentry {
-		shoutrrr.Send(notificationurl, fmt.Sprintf("%s - %s - %s", name, feed.Items[0].Title, feed.Items[0].Link))
+	existingDoc, _ := db.Query("feeds").Where(clover.Field("name").Eq(name)).FindFirst()
+
+	var err error
+	if existingDoc == nil || existingDoc.Get("url").(string) != latestLink {
+		err = shoutrrr.Send(notificationUrl,
+			fmt.Sprintf("%s - %s - %s", name, feed.Items[0].Title, latestLink))
 	}
-	err = db.Set(ctx, name, newcache, 0).Err()
+	if existingDoc != nil {
+		existingDoc.Set("url", latestLink)
+		err = db.Save("feeds", existingDoc)
+	} else {
+		existingDoc = clover.NewDocument()
+		existingDoc.Set("name", name)
+		existingDoc.Set("url", latestLink)
+		_, err = db.InsertOne("feeds", existingDoc)
+	}
 	if err != nil {
-		log.Println("Failed to store entry in redis cache.")
+		log.Fatalln(err.Error())
 	}
-}
-
-func createRedisClient() *redis.Client {
-	redisaddr, v := os.LookupEnv("REDIS_ADDR")
-	if !v {
-		redisaddr = "redis:6379"
-	}
-	redispass, v := os.LookupEnv("REDIS_PASS")
-	if !v {
-		redispass = ""
-	}
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     redisaddr,
-		Password: redispass, // no password set
-		DB:       0,         // use default DB
-	})
-	return rdb
 }
 
 func main() {
 	log.SetOutput(os.Stdout)
 	log.Println("Starting Feed notifier...")
+
 	conf.Load(confmap.Provider(map[string]interface{}{
-		"timeout": 10800,
-		"delay":   5,
+		"timeout":            10800,
+		"delay":              5,
+		"db_collection_name": "feeds",
+		"db_path":            "/config/db",
 	}, "."), nil)
 	conf.Load(file.Provider("/config.json"), json.Parser())
 	conf.Load(file.Provider("./config.json"), json.Parser())
@@ -73,9 +67,22 @@ func main() {
 		return strings.ToLower(s)
 	}), nil)
 
+	db, err := clover.Open(conf.MustString("db_path"))
+	if err != nil {
+		log.Fatalln("Failed to open DB. " + err.Error())
+	}
+	collectionExists, err := db.HasCollection("feeds")
+	if err == nil && !collectionExists {
+		err = db.CreateCollection("feeds")
+	}
+	if err != nil {
+		log.Fatalln("Failed to create feed collection.")
+	}
+
 	// Setup notifier
-	notification_url := conf.MustString("notification_url")
-	err := shoutrrr.Send(notification_url, "Feed Notifier Started...")
+	notificationUrl := conf.MustString("notification_url")
+
+	err = shoutrrr.Send(notificationUrl, "Feed Notifier Started...")
 	if err != nil {
 		log.Fatalln("Failed to send test message: " + err.Error())
 	}
@@ -92,15 +99,12 @@ func main() {
 	}
 
 	// Setup scheduler.
-	timeout := int(conf.MustInt64("timeout"))
-	delay := int(conf.MustInt64("delay"))
+	timeout := conf.MustInt("timeout")
 	plan := gocron.NewScheduler(time.UTC)
 
 	// Run notifier.
 	for _, f := range feeds {
-		task(f.Name, f.Url, notification_url)
-		time.Sleep(time.Duration(delay) * time.Second)
-		_, err := plan.Every(timeout).Seconds().Do(task, f.Name, f.Url, notification_url)
+		_, err := plan.Every(timeout).Seconds().Do(task, f.Name, f.Url, notificationUrl, db)
 		if err != nil {
 			log.Fatalf("Failed to create task for %s\nError: %s", f.Name, err.Error())
 		}

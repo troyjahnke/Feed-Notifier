@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/mmcdole/gofeed"
 )
 
@@ -48,18 +49,24 @@ func HandleRequest(ctx context.Context) {
 		}
 		latestLink := parsedFeed.Items[0].Link
 		if latestLink != feed.Latest {
-			log.Println(latestLink)
-			updateExpression := "SET latest = " + latestLink
-			_, err := svc.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+			update := expression.Set(expression.Name("latest"), expression.Value(latestLink))
+			expr, err := expression.NewBuilder().WithUpdate(update).Build()
+			if err != nil{
+				log.Fatalln(err.Error())
+			}
+			_, err = svc.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 				TableName: aws.String("feeds"),
 				Key: map[string]types.AttributeValue{
-					"id": &types.AttributeValueMemberS{Value: feed.Name},
+					"name": &types.AttributeValueMemberS{Value: feed.Name},
 				},
-				UpdateExpression: &updateExpression,
+				UpdateExpression: expr.Update(),
+				ExpressionAttributeNames: expr.Names(),
+				ExpressionAttributeValues: expr.Values(),
+
 			})
-                        if err != nil{
-                                log.Fatalln(err.Error())
-                        }
+			if err != nil {
+				log.Fatalln(err.Error())
+			}
 		}
 	}
 }

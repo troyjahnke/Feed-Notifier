@@ -29,24 +29,33 @@ type ShoutrrrSecret struct {
 }
 
 func HandleRequest(ctx context.Context) {
+	// Initialize services.
 	cfg, _ := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
 		options.Region = "us-east-1"
 		return nil
 	})
-	svc := dynamodb.NewFromConfig(cfg)
+	dynamodbService := dynamodb.NewFromConfig(cfg)
 	secretManager := secretsmanager.NewFromConfig(cfg)
-	scannedFeeds, err := svc.Scan(ctx, &dynamodb.ScanInput{
+
+	// Setup notification URL.
+	shoutrrrUrl, err := secretManager.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String("notificationFinal"),
+	})
+	if err != nil {
+		log.Fatalln("Failed to get notification URL: " + err.Error())
+	}
+
+	// Scan for feeds.
+	scannedFeeds, err := dynamodbService.Scan(ctx, &dynamodb.ScanInput{
 		TableName: aws.String("feeds"),
 	})
 	if err != nil {
-		log.Fatalln(err.Error())
+		log.Fatalln("Failed to get feeds: " + err.Error())
 	}
-
 	var feeds []Feed
-
 	err = attributevalue.UnmarshalListOfMaps(scannedFeeds.Items, &feeds)
 	if err != nil {
-		log.Fatalln(err.Error())
+		log.Fatalln("Failed to parse feeds: " + err.Error())
 	}
 
 	fp := gofeed.NewParser()
@@ -54,23 +63,18 @@ func HandleRequest(ctx context.Context) {
 	for _, feed := range feeds {
 		parsedFeed, err := fp.ParseURL(feed.Url)
 		if err != nil {
-			log.Fatalln(err.Error())
+			log.Fatalln("Failed to parse the feed URL: " + err.Error())
 		}
 		latestFeed := parsedFeed.Items[0]
 		latestLink := latestFeed.Link
+		log.Printf("Stored Info: %s | %s | %s -> %s", feed.Name, feed.Url, feed.Latest, latestLink)
 		if latestLink != feed.Latest {
-			shoutrrrUrl, err := secretManager.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-				SecretId: aws.String("shoutrrrUrl"),
-			})
-			if err != nil {
-				log.Fatalln("Failed to get notification configuration.")
-			}
 			update := expression.Set(expression.Name("latest"), expression.Value(latestLink))
 			expr, err := expression.NewBuilder().WithUpdate(update).Build()
 			if err != nil {
-				log.Fatalln(err.Error())
+				log.Fatalln("Failed to build query expression: " + err.Error())
 			}
-			_, err = svc.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+			_, err = dynamodbService.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 				TableName: aws.String("feeds"),
 				Key: map[string]types.AttributeValue{
 					"name": &types.AttributeValueMemberS{Value: feed.Name},
@@ -80,7 +84,7 @@ func HandleRequest(ctx context.Context) {
 				ExpressionAttributeValues: expr.Values(),
 			})
 			if err != nil {
-				log.Fatalln(err.Error())
+				log.Fatalln("Failed to update entry: " + err.Error())
 			}
 			var shoutrrrEntry ShoutrrrSecret
 			if json.Unmarshal([]byte(*shoutrrrUrl.SecretString), &shoutrrrEntry) != nil {

@@ -137,3 +137,18 @@ resource "aws_lambda_function" "feed_notifier" {
   filename      = "C:/Users/troy/dev/checkout/gitlab/feednotifier/FeedNotifier.zip"
   timeout = var.feed_notifier_timeout
 }
+
+resource "aws_cloudwatch_event_rule" "feed_notifier" {
+  name = "FeedNotifierScheduler"
+  schedule_expression = "rate(3 hours)"
+}
+
+resource "aws_cloudwatch_event_target" "feed_notifier" {
+  arn  = aws_lambda_function.feed_notifier.arn
+  rule = aws_cloudwatch_event_rule.feed_notifier.name
+}
+
+resource "aws_cloudwatch_log_group" "feed_notifier" {
+  name = "/aws/lambda/${aws_lambda_function.feed_notifier.function_name}"
+  retention_in_days = 1
+}

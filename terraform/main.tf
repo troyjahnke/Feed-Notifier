@@ -92,6 +92,18 @@ data "aws_iam_policy_document" "cloudWatch" {
   }
 }
 
+data "aws_iam_policy_document" "event_bridge"{
+  statement {
+    effect = "Allow"
+    actions = ["lambda:InvokeFunction"]
+    resources = [aws_lambda_function.feed_notifier.arn]
+    principals {
+      identifiers = ["events.amazonaws.com"]
+      type        = "Service"
+    }
+  }
+}
+
 resource "aws_iam_policy" "cloudwatch" {
   policy = data.aws_iam_policy_document.cloudWatch.json
 }
@@ -102,6 +114,10 @@ resource "aws_iam_policy" "dynamoDB" {
 
 resource "aws_iam_policy" "secretsManager" {
   policy = data.aws_iam_policy_document.secretManager.json
+}
+
+resource "aws_iam_policy" "event_bridge" {
+  policy = data.aws_iam_policy_document.event_bridge.json
 }
 
 resource "aws_iam_role_policy_attachment" "cloudWatch" {
@@ -119,6 +135,11 @@ resource "aws_iam_role_policy_attachment" "secretsManager" {
   role       = aws_iam_role.feedNotifier.name
 }
 
+resource "aws_iam_role_policy_attachment" "event_bridge" {
+  policy_arn = aws_iam_policy.event_bridge.arn
+  role       = aws_iam_role.feedNotifier.name
+}
+
 resource "aws_iam_role" "feedNotifier" {
   name               = "feedNotifier"
   assume_role_policy = data.aws_iam_policy_document.inlinePolicy.json
@@ -126,6 +147,10 @@ resource "aws_iam_role" "feedNotifier" {
   managed_policy_arns = [aws_iam_policy.cloudwatch.arn,
     aws_iam_policy.dynamoDB.arn,
     aws_iam_policy.secretsManager.arn]
+}
+resource "aws_iam_role" "feed_scheduler" {
+  name = "feedScheduler"
+  assume_role_policy = data.aws_iam_policy_document.event_bridge.json
 }
 
 resource "aws_lambda_function" "feed_notifier" {
@@ -145,6 +170,7 @@ resource "aws_cloudwatch_event_rule" "feed_notifier" {
 resource "aws_cloudwatch_event_target" "feed_notifier" {
   arn  = aws_lambda_function.feed_notifier.arn
   rule = aws_cloudwatch_event_rule.feed_notifier.name
+  role_arn = aws_iam_role.feed_scheduler.arn
 }
 
 resource "aws_cloudwatch_log_group" "feed_notifier" {

@@ -31,7 +31,7 @@ resource "aws_dynamodb_table" "feed_table" {
   }
 }
 
-resource "aws_dynamodb_table_item" "item" {
+resource "aws_dynamodb_table_item" "feed" {
   hash_key   = aws_dynamodb_table.feed_table.hash_key
   table_name = aws_dynamodb_table.feed_table.name
   for_each   = var.feeds
@@ -39,10 +39,15 @@ resource "aws_dynamodb_table_item" "item" {
     {
       "name" : { "S" : "${each.key}" },
       "url" : { "S" : "${each.value}" }
-    })
+    }
+  )
+  lifecycle {
+    ignore_changes = all
+  }
+
 }
 
-data "aws_iam_policy_document" "inlinePolicy" {
+data "aws_iam_policy_document" "feed_notifier_inline_policy" {
   statement {
     effect = "Allow"
     actions = ["sts:AssumeRole"]
@@ -53,7 +58,7 @@ data "aws_iam_policy_document" "inlinePolicy" {
   }
 }
 
-data "aws_iam_policy_document" "dynamoDB" {
+data "aws_iam_policy_document" "feed_db" {
   statement {
     effect = "Allow"
     actions = [
@@ -67,7 +72,7 @@ data "aws_iam_policy_document" "dynamoDB" {
   }
 }
 
-data "aws_iam_policy_document" "secretManager" {
+data "aws_iam_policy_document" "notification_secret" {
   statement {
     effect = "Allow"
     actions = [
@@ -80,7 +85,7 @@ data "aws_iam_policy_document" "secretManager" {
   }
 }
 
-data "aws_iam_policy_document" "cloudWatch" {
+data "aws_iam_policy_document" "cloud_watch" {
   statement {
     effect = "Allow"
     actions = [
@@ -92,40 +97,40 @@ data "aws_iam_policy_document" "cloudWatch" {
   }
 }
 
-resource "aws_iam_policy" "cloudwatch" {
-  policy = data.aws_iam_policy_document.cloudWatch.json
+resource "aws_iam_policy" "feed_function_cloud_watch" {
+  policy = data.aws_iam_policy_document.cloud_watch.json
 }
 
-resource "aws_iam_policy" "dynamoDB" {
-  policy = data.aws_iam_policy_document.dynamoDB.json
+resource "aws_iam_policy" "feed_db" {
+  policy = data.aws_iam_policy_document.feed_db.json
 }
 
-resource "aws_iam_policy" "secretsManager" {
-  policy = data.aws_iam_policy_document.secretManager.json
+resource "aws_iam_policy" "notification_secret" {
+  policy = data.aws_iam_policy_document.notification_secret.json
 }
 
-resource "aws_iam_role_policy_attachment" "cloudWatch" {
-  policy_arn = aws_iam_policy.cloudwatch.arn
+resource "aws_iam_role_policy_attachment" "feed_function_cloud_watch" {
+  policy_arn = aws_iam_policy.feed_function_cloud_watch.arn
   role       = aws_iam_role.feedNotifier.name
 }
 
-resource "aws_iam_role_policy_attachment" "dynamoDB" {
-  policy_arn = aws_iam_policy.dynamoDB.arn
+resource "aws_iam_role_policy_attachment" "feed_db" {
+  policy_arn = aws_iam_policy.feed_db.arn
   role       = aws_iam_role.feedNotifier.name
 }
 
-resource "aws_iam_role_policy_attachment" "secretsManager" {
-  policy_arn = aws_iam_policy.secretsManager.arn
+resource "aws_iam_role_policy_attachment" "notification_secret" {
+  policy_arn = aws_iam_policy.notification_secret.arn
   role       = aws_iam_role.feedNotifier.name
 }
 
 resource "aws_iam_role" "feedNotifier" {
   name               = "feedNotifier"
-  assume_role_policy = data.aws_iam_policy_document.inlinePolicy.json
+  assume_role_policy = data.aws_iam_policy_document.feed_notifier_inline_policy.json
 
-  managed_policy_arns = [aws_iam_policy.cloudwatch.arn,
-    aws_iam_policy.dynamoDB.arn,
-    aws_iam_policy.secretsManager.arn]
+  managed_policy_arns = [aws_iam_policy.feed_function_cloud_watch.arn,
+    aws_iam_policy.feed_db.arn,
+    aws_iam_policy.notification_secret.arn]
 }
 
 resource "aws_lambda_function" "feed_notifier" {
@@ -159,4 +164,10 @@ resource "aws_lambda_permission" "scheduler" {
   function_name = aws_lambda_function.feed_notifier.function_name
   principal     = "events.amazonaws.com"
   source_arn = aws_cloudwatch_event_rule.scheduler.arn
+}
+
+terraform {
+  backend "local" {
+    path = "../../../../../syncthing/cloud/terraform/feednotifier.tfstate"
+  }
 }

@@ -132,7 +132,6 @@ func HandleRequest(ctx context.Context) {
 	var feedInfo FeedInfo
 	// Initialize services.
 	cfg, _ := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		options.Region = "us-east-1"
 		return nil
 	})
 	if isAws {

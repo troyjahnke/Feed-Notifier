@@ -167,7 +167,9 @@ resource "aws_lambda_permission" "scheduler" {
 }
 
 terraform {
-  backend "local" {
-    path = "../../../../../syncthing/cloud/terraform/feednotifier.tfstate"
+  backend "s3" {
+    bucket = "aerzus-terraform"
+    key = "feednotifier.tfstate"
+    region = "us-east-1"
   }
 }

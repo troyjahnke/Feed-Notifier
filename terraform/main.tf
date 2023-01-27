@@ -11,7 +11,7 @@ provider "aws" {
 }
 
 resource "aws_secretsmanager_secret" "notification_secret" {
-  name = "notificationFinal"
+  name = var.notification_secret_name
 }
 
 resource "aws_secretsmanager_secret_version" "shoutrrr_secret_version" {
@@ -20,7 +20,7 @@ resource "aws_secretsmanager_secret_version" "shoutrrr_secret_version" {
 }
 
 resource "aws_dynamodb_table" "feed_table" {
-  name           = "feeds"
+  name           = var.table_name
   hash_key       = "name"
   read_capacity  = 10
   write_capacity = 10
@@ -29,22 +29,6 @@ resource "aws_dynamodb_table" "feed_table" {
     name = "name"
     type = "S"
   }
-}
-
-resource "aws_dynamodb_table_item" "feed" {
-  hash_key   = aws_dynamodb_table.feed_table.hash_key
-  table_name = aws_dynamodb_table.feed_table.name
-  for_each   = var.feeds
-  item       = jsonencode(
-    {
-      "name" : { "S" : "${each.key}" },
-      "url" : { "S" : "${each.value}" }
-    }
-  )
-  lifecycle {
-    ignore_changes = all
-  }
-
 }
 
 data "aws_iam_policy_document" "feed_notifier_inline_policy" {
@@ -138,8 +122,14 @@ resource "aws_lambda_function" "feed_notifier" {
   role          = aws_iam_role.feedNotifier.arn
   runtime       = "go1.x"
   handler       = "FeedNotifier"
-  filename      = "C:/Users/troy/dev/checkout/gitlab/feednotifier/FeedNotifier.zip"
+  filename      = var.feed_notifier_zip
   timeout = var.feed_notifier_timeout
+  environment {
+    variables = {
+      TABLE_NAME=var.table_name
+      SECRET_NAME=var.notification_secret_name
+    }
+  }
 }
 
 resource "aws_cloudwatch_log_group" "feed_notifier" {

@@ -88,7 +88,7 @@ func (jsonInfo JsonInfo) UpdateFeedInfo(feedName string, latestLink string) erro
 func (awsInfo AwsInfo) GetFeedInfo() (string, []Feed) {
 	// Setup notification URL.
 	shoutrrrUrl, err := awsInfo.SecretManager.GetSecretValue(awsInfo.Ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String("notificationFinal"),
+		SecretId: aws.String(os.Getenv("SECRET_NAME")),
 	})
 	if err != nil {
 		log.Fatalln("Failed to get notification URL: " + err.Error())
@@ -96,7 +96,7 @@ func (awsInfo AwsInfo) GetFeedInfo() (string, []Feed) {
 
 	// Scan for feeds.
 	scannedFeeds, err := awsInfo.DBClient.Scan(awsInfo.Ctx, &dynamodb.ScanInput{
-		TableName: aws.String("feeds"),
+		TableName: aws.String(os.Getenv("TABLE_NAME")),
 	})
 	if err != nil {
 		log.Fatalln("Failed to get feeds: " + err.Error())

@@ -16,7 +16,7 @@ resource "aws_secretsmanager_secret" "notification_secret" {
 
 resource "aws_secretsmanager_secret_version" "shoutrrr_secret_version" {
   secret_id     = aws_secretsmanager_secret.notification_secret.arn
-  secret_string = jsonencode(var.shoutrrr_url)
+  secret_string = var.shoutrrr_url
 }
 
 resource "aws_dynamodb_table" "feed_table" {

@@ -152,6 +152,7 @@ func HandleRequest(ctx context.Context) {
 
 	// Iterate over feed URLs in the list from AWS.
 	for _, feed := range feeds {
+		log.Printf("Processing %s | %s| %s", feed.Name, feed.Url, feed.Latest)
 		parsedFeed, err := fp.ParseURL(feed.Url)
 		if err != nil {
 			log.Fatalln("Failed to parse the feed URL: " + err.Error())
@@ -169,16 +170,18 @@ func HandleRequest(ctx context.Context) {
 		// Iterate over items in the syndication feed.
 		for _, feedItem := range parsedFeed.Items {
 			feedLink := feedItem.Link
-			log.Printf("Stored Info: %s | %s | %s -> %s", feed.Name, feed.Url, feed.Latest, feedLink)
 			if pattern != nil {
 				if !pattern.MatchString(feedLink) {
 					continue
 				} else {
-					// We found a match but we still need to check to see if this matches the latest link.
+					// We found a match but we still need to check to see if this matches the latest link to see if its
+					// an update.
+					log.Printf("Pattern matched: %s", feedLink)
 					matchFound = true
 				}
 			}
 			if feedLink != feed.Latest {
+				log.Printf("Updating %s: %s -> %s", feed.Name, feed.Latest, feedLink)
 				err = feedInfo.UpdateFeedInfo(feed.Name, feedLink)
 				if err != nil {
 					log.Fatalln("Failed to update entry: " + err.Error())

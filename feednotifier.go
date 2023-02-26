@@ -41,14 +41,8 @@ type AwsInfo struct {
 
 type JsonInfo struct{}
 
-type ShoutrrrSecret struct {
-	Url string `json:"shoutrrrUrl"`
-}
-
 func (jsonInfo JsonInfo) GetFeedInfo() (string, []Feed) {
-	shoutrrrUrl := ShoutrrrSecret{
-		Url: os.Getenv("NOTIFICATION_URL"),
-	}
+	shoutrrrUrl := os.Getenv("NOTIFICATION_URL")
 	feedBytes, err := os.ReadFile("feeds.json")
 	if err != nil {
 		log.Fatalln(err)
@@ -186,11 +180,7 @@ func HandleRequest(ctx context.Context) {
 				if err != nil {
 					log.Fatalln("Failed to update entry: " + err.Error())
 				}
-				var shoutrrrEntry ShoutrrrSecret
-				if json.Unmarshal([]byte(shoutrrrUrl), &shoutrrrEntry) != nil {
-					log.Fatalln("Failed to parse notification URL")
-				}
-				if err = shoutrrr.Send(shoutrrrEntry.Url,
+				if err = shoutrrr.Send(shoutrrrUrl,
 					fmt.Sprintf("%s - %s - %s", feed.Name, feedItem.Title, feedLink)); err != nil {
 					log.Fatalln("Failed to send notification: " + err.Error())
 				}

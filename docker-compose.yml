@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  feed-notifier:
+    image: feed-notifier:${GO_VERSION}.${VERSION}
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      args:
+        GO_VERSION: ${GO_VERSION}

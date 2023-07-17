@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"log"
 	"os"
 	"regexp"
 
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/containrrr/shoutrrr"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -34,9 +34,9 @@ type FeedInfo interface {
 }
 
 type AwsInfo struct {
-	DBClient      *dynamodb.Client
-	SecretManager *secretsmanager.Client
-	Ctx           context.Context
+	DBClient  *dynamodb.Client
+	SSMClient *ssm.Client
+	Ctx       context.Context
 }
 
 type JsonInfo struct{}
@@ -81,8 +81,8 @@ func (jsonInfo JsonInfo) UpdateFeedInfo(feedName string, latestLink string) erro
 
 func (awsInfo AwsInfo) GetFeedInfo() (string, []Feed) {
 	// Setup notification URL.
-	shoutrrrUrl, err := awsInfo.SecretManager.GetSecretValue(awsInfo.Ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(os.Getenv("SECRET_NAME")),
+	shoutrrrUrl, err := awsInfo.SSMClient.GetParameter(awsInfo.Ctx, &ssm.GetParameterInput{
+		Name: aws.String(os.Getenv("SECRET_NAME")),
 	})
 	if err != nil {
 		log.Fatalln("Failed to get notification URL: " + err.Error())
@@ -100,7 +100,7 @@ func (awsInfo AwsInfo) GetFeedInfo() (string, []Feed) {
 	if err != nil {
 		log.Fatalln("Failed to parse feeds: " + err.Error())
 	}
-	return *shoutrrrUrl.SecretString, feeds
+	return *shoutrrrUrl.Parameter.Value, feeds
 }
 
 func (awsInfo AwsInfo) UpdateFeedInfo(feedName string, latestLink string) error {
@@ -129,12 +129,12 @@ func HandleRequest(ctx context.Context) {
 		return nil
 	})
 	if isAws {
+		ssmService := ssm.NewFromConfig(cfg)
 		dynamodbService := dynamodb.NewFromConfig(cfg)
-		secretManager := secretsmanager.NewFromConfig(cfg)
 		feedInfo = AwsInfo{
-			SecretManager: secretManager,
-			DBClient:      dynamodbService,
-			Ctx:           ctx,
+			SSMClient: ssmService,
+			DBClient:  dynamodbService,
+			Ctx:       ctx,
 		}
 	} else {
 		feedInfo = JsonInfo{}

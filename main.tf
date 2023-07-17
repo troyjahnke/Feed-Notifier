@@ -10,13 +10,11 @@ provider "aws" {
   region = var.aws_region
 }
 
-resource "aws_secretsmanager_secret" "notification_secret" {
+resource "aws_ssm_parameter" "shoutrrr_secret" {
   name = var.notification_secret_name
-}
-
-resource "aws_secretsmanager_secret_version" "shoutrrr_secret_version" {
-  secret_id     = aws_secretsmanager_secret.notification_secret.arn
-  secret_string = var.shoutrrr_url
+  type = "SecureString"
+  value = var.shoutrrr_url
+  tier = "Standard"
 }
 
 resource "aws_dynamodb_table" "feed_table" {
@@ -60,11 +58,10 @@ data "aws_iam_policy_document" "notification_secret" {
   statement {
     effect = "Allow"
     actions = [
-      "secretsmanager:GetSecretValue"
+      "ssm:GetParameter"
     ]
     resources = [
-      aws_secretsmanager_secret.notification_secret.arn,
-      aws_secretsmanager_secret_version.shoutrrr_secret_version.arn
+      aws_ssm_parameter.shoutrrr_secret.arn
     ]
   }
 }
@@ -117,12 +114,26 @@ resource "aws_iam_role" "feedNotifier" {
     aws_iam_policy.notification_secret.arn]
 }
 
+resource "null_resource" "feed_notifier" {
+  provisioner "local-exec" {
+    working_dir = "./src"
+    command = "GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build"
+  }
+}
+
+data "archive_file" "feed_notifier" {
+  source_file = "./src/FeedNotifier"
+  output_path = "../FeedNotifier.zip"
+  type        = "zip"
+  depends_on = [null_resource.feed_notifier]
+}
+
 resource "aws_lambda_function" "feed_notifier" {
   function_name = "FeedNotifier"
   role          = aws_iam_role.feedNotifier.arn
   runtime       = "go1.x"
   handler       = "FeedNotifier"
-  filename      = var.feed_notifier_zip
+  filename      = data.archive_file.feed_notifier.output_path
   timeout = var.feed_notifier_timeout
   environment {
     variables = {

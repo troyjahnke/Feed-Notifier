@@ -11,7 +11,7 @@ variable "table_name" {
   type = string
 }
 variable "notification_secret_name" {
-  default = "notification-temp"
+  default = "notification-url"
 }
 variable "feed_notifier_zip"  {
   default = "../FeedNotifier.zip"

@@ -4,7 +4,7 @@ services:
   feed-notifier:
     image: feed-notifier:${GO_VERSION}.${VERSION}
     build:
-      context: ./
+      context: ..
       dockerfile: Dockerfile
       args:
         GO_VERSION: ${GO_VERSION}

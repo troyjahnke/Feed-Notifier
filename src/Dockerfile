@@ -6,5 +6,5 @@ WORKDIR /app
 RUN go build
 
 FROM public.ecr.aws/lambda/go:latest
-COPY --from=builder /app/FeedNotifier ${LAMBDA_TASK_ROOT}
+COPY --from=builder /src/FeedNotifier ${LAMBDA_TASK_ROOT}
 CMD ["FeedNotifier"]

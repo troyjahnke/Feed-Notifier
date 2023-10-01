@@ -168,7 +168,7 @@ func HandleRequest(ctx context.Context) {
 				if !pattern.MatchString(feedLink) {
 					continue
 				} else {
-					// We found a match but we still need to check to see if this matches the latest link to see if its
+					// We found a match, so we still need to check to see if this matches the latest link to see if it's
 					// an update.
 					log.Printf("Pattern matched: %s", feedLink)
 					matchFound = true

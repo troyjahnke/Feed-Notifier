@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/containrrr/shoutrrr/pkg/router"
 	"log"
 	"os"
 	"regexp"
@@ -39,53 +39,24 @@ type AwsInfo struct {
 	Ctx       context.Context
 }
 
-type JsonInfo struct{}
-
-func (jsonInfo JsonInfo) GetFeedInfo() (string, []Feed) {
-	shoutrrrUrl := os.Getenv("NOTIFICATION_URL")
-	feedBytes, err := os.ReadFile("feeds.json")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	var feeds []Feed
-	err = json.Unmarshal(feedBytes, &feeds)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	notificationUrl, err := json.Marshal(shoutrrrUrl)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return string(notificationUrl), feeds
-}
-
-func (jsonInfo JsonInfo) UpdateFeedInfo(feedName string, latestLink string) error {
-	feedBytes, err := os.ReadFile("feeds.json")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	var feeds []Feed
-	err = json.Unmarshal(feedBytes, &feeds)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	for _, feed := range feeds {
-		if feed.Name == feedName {
-			feed.Latest = latestLink
-		}
-	}
-	feedBytes, err = json.Marshal(feeds)
-	err = os.WriteFile("feeds.json", feedBytes, 0644)
-	return err
-}
-
 func (awsInfo AwsInfo) GetFeedInfo() (string, []Feed) {
 	// Setup notification URL.
-	shoutrrrUrl, err := awsInfo.SSMClient.GetParameter(awsInfo.Ctx, &ssm.GetParameterInput{
-		Name: aws.String(os.Getenv("SECRET_NAME")),
+	secretName, exists := os.LookupEnv("SECRET_NAME")
+	if !exists {
+		log.Fatalln("Secret Name environment variable does not exist.")
+	}
+	ssmResponse, err := awsInfo.SSMClient.GetParameter(awsInfo.Ctx, &ssm.GetParameterInput{
+		Name:           aws.String(secretName),
+		WithDecryption: aws.Bool(true),
 	})
 	if err != nil {
 		log.Fatalln("Failed to get notification URL: " + err.Error())
+	}
+	shoutrrrUrl := ssmResponse.Parameter.Value
+	serviceRouter := router.ServiceRouter{}
+	_, err = serviceRouter.Locate(*shoutrrrUrl)
+	if err != nil {
+		log.Fatalln("Notification URL validation failed: " + err.Error())
 	}
 
 	// Scan for feeds.
@@ -100,7 +71,7 @@ func (awsInfo AwsInfo) GetFeedInfo() (string, []Feed) {
 	if err != nil {
 		log.Fatalln("Failed to parse feeds: " + err.Error())
 	}
-	return *shoutrrrUrl.Parameter.Value, feeds
+	return *shoutrrrUrl, feeds
 }
 
 func (awsInfo AwsInfo) UpdateFeedInfo(feedName string, latestLink string) error {
@@ -122,22 +93,17 @@ func (awsInfo AwsInfo) UpdateFeedInfo(feedName string, latestLink string) error 
 }
 
 func HandleRequest(ctx context.Context) {
-	_, isAws := os.LookupEnv("AWS_LAMBDA_FUNCTION_NAME")
 	var feedInfo FeedInfo
 	// Initialize services.
 	cfg, _ := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
 		return nil
 	})
-	if isAws {
-		ssmService := ssm.NewFromConfig(cfg)
-		dynamodbService := dynamodb.NewFromConfig(cfg)
-		feedInfo = AwsInfo{
-			SSMClient: ssmService,
-			DBClient:  dynamodbService,
-			Ctx:       ctx,
-		}
-	} else {
-		feedInfo = JsonInfo{}
+	ssmService := ssm.NewFromConfig(cfg)
+	dynamodbService := dynamodb.NewFromConfig(cfg)
+	feedInfo = AwsInfo{
+		SSMClient: ssmService,
+		DBClient:  dynamodbService,
+		Ctx:       ctx,
 	}
 	shoutrrrUrl, feeds := feedInfo.GetFeedInfo()
 	// Construct the feed parser. This is used to perform the request and parse the items in
@@ -195,10 +161,5 @@ func HandleRequest(ctx context.Context) {
 }
 
 func main() {
-	_, isAws := os.LookupEnv("AWS_LAMBDA_FUNCTION_NAME")
-	if isAws {
-		lambda.Start(HandleRequest)
-	} else {
-		HandleRequest(context.TODO())
-	}
+	lambda.Start(HandleRequest)
 }

@@ -1,7 +1,10 @@
 variable "aws_region" {
   default = "us-east-1"
 }
-variable "shoutrrr_url" {}
+variable "shoutrrr_url" {
+  type = string
+  sensitive = true
+}
 variable "feed_notifier_timeout" {
   default = 10
   type = number
